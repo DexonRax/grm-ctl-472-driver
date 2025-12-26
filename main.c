@@ -4,35 +4,47 @@
 #include <windows.h>
 
 typedef struct {
-    int max_x;
-    int max_y;
+    int pos_x;
+    int pos_y;
+    int size_x;
+    int size_y;
 } TabletConfig;
 
 
 TabletConfig load_config() {
-    TabletConfig cfg = {15200, 9500}; // default values
+    // Default values if file is missing or corrupt
+    TabletConfig cfg = {0, 0, 15200, 9500}; 
     FILE *f = fopen("config.txt", "r");
     if (f) {
-        if (fscanf(f, "MAX_X=%d\nMAX_Y=%d", &cfg.max_x, &cfg.max_y) == 2) {
-            printf("Config loaded: Area %d x %d\n", cfg.max_x, cfg.max_y);
+        if (fscanf(f, "POS_X=%d\nPOS_Y=%d\nSIZE_X=%d\nSIZE_Y=%d", 
+            &cfg.pos_x, &cfg.pos_y, &cfg.size_x, &cfg.size_y) == 4) {
+            printf("Config loaded: Offset (%d,%d) Area %d x %d\n", 
+                cfg.pos_x, cfg.pos_y, cfg.size_x, cfg.size_y);
         }
         fclose(f);
-    } else {
-        printf("config.txt not found, using default config.\n");
     }
     return cfg;
 }
 
 void MoveMouse(uint16_t x, uint16_t y, int click, TabletConfig cfg) {
-    if (x > cfg.max_x) x = cfg.max_x;
-    if (y > cfg.max_y) y = cfg.max_y;
+    // 1. Apply Offset (pos_x / pos_y)
+    // We use long to prevent underflow if the raw x is smaller than the offset
+    long adjusted_x = (long)x - cfg.pos_x;
+    long adjusted_y = (long)y - cfg.pos_y;
+
+    // 2. Clamp to the defined area size
+    if (adjusted_x < 0) adjusted_x = 0;
+    if (adjusted_y < 0) adjusted_y = 0;
+    if (adjusted_x > cfg.size_x) adjusted_x = cfg.size_x;
+    if (adjusted_y > cfg.size_y) adjusted_y = cfg.size_y;
 
     INPUT input = {0};
     input.type = INPUT_MOUSE;
 
-    // Scalling for Windows (0-65535)
-    input.mi.dx = (long)((float)x * (65535.0f / (float)cfg.max_x));
-    input.mi.dy = (long)((float)y * (65535.0f / (float)cfg.max_y));
+    // 3. Scaling for Windows (0-65535)
+    // Formula: (Current_Pos / Max_Range) * 65535
+    input.mi.dx = (long)((float)adjusted_x * (65535.0f / (float)cfg.size_x));
+    input.mi.dy = (long)((float)adjusted_y * (65535.0f / (float)cfg.size_y));
 
     input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
 
@@ -69,7 +81,7 @@ int main() {
     hid_send_feature_report(handle, init_msg, sizeof(init_msg));
 
     unsigned char buf[10];
-    printf("Driver running. Area: 0..%d, 0..%d\n", config.max_x, config.max_y);
+    printf("Driver running.");
 
     while (1) {
         int res = hid_read(handle, buf, sizeof(buf));

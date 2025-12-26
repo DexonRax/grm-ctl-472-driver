@@ -38,5 +38,7 @@ A high-performance, minimalist C-based driver for the **Wacom One (CTL-472)**. T
 The driver maps your specified area to the full resolution of your monitor. Edit the values to match your preferred tablet area (raw units):
 
 ```text
-MAX_X=6800
-MAX_Y=5400
+POS_X=0
+POS_Y=0
+SIZE_X=6800
+SIZE_Y=5400
