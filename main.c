@@ -8,31 +8,61 @@ typedef struct {
     int pos_y;
     int size_x;
     int size_y;
+    int rot;
 } TabletConfig;
+
+    
+#define MAX_TABLET_X 15200
+#define MAX_TABLET_Y 9500
 
 
 TabletConfig load_config() {
     // Default values if file is missing or corrupt
-    TabletConfig cfg = {0, 0, 15200, 9500}; 
+    TabletConfig cfg = {0, 0, 15200, 9500, 0}; 
     FILE *f = fopen("config.txt", "r");
     if (f) {
-        if (fscanf(f, "POS_X=%d\nPOS_Y=%d\nSIZE_X=%d\nSIZE_Y=%d", 
-            &cfg.pos_x, &cfg.pos_y, &cfg.size_x, &cfg.size_y) == 4) {
-            printf("Config loaded: Offset (%d,%d) Area %d x %d\n", 
-                cfg.pos_x, cfg.pos_y, cfg.size_x, cfg.size_y);
+        if (fscanf(f, "POS_X=%d\nPOS_Y=%d\nSIZE_X=%d\nSIZE_Y=%d\nROT=%d", 
+            &cfg.pos_x, &cfg.pos_y, &cfg.size_x, &cfg.size_y, &cfg.rot) == 5) {
+            printf("Config loaded: Offset (%d,%d) Area %d x %d rotated %d degrees\n", 
+                cfg.pos_x, cfg.pos_y, cfg.size_x, cfg.size_y, cfg.rot*90);
         }
         fclose(f);
     }
     return cfg;
 }
 
-void MoveMouse(uint16_t x, uint16_t y, int click, TabletConfig cfg) {
-    // 1. Apply Offset (pos_x / pos_y)
-    // We use long to prevent underflow if the raw x is smaller than the offset
-    long adjusted_x = (long)x - cfg.pos_x;
-    long adjusted_y = (long)y - cfg.pos_y;
+void MoveMouse(uint16_t raw_x, uint16_t raw_y, int click, TabletConfig cfg) {
+    long rot_x, rot_y;
 
-    // 2. Clamp to the defined area size
+    // Rotation Logic
+    // Maps raw physical coordinates to logical coordinates based on rotation anchor
+    switch (cfg.rot % 4) {
+        case 0: // 0 deg - Anchor Top-Left (Standard)
+            rot_x = raw_x;
+            rot_y = raw_y;
+            break;
+        case 1: // 90 deg CW - Anchor Top-Right
+            rot_x = raw_y;
+            rot_y = MAX_TABLET_X - raw_x;
+            break;
+        case 2: // 180 deg CW - Anchor Bottom-Right
+            rot_x = MAX_TABLET_X - raw_x;
+            rot_y = MAX_TABLET_Y - raw_y;
+            break;
+        case 3: // 270 deg CW - Anchor Bottom-Left
+            rot_x = MAX_TABLET_Y - raw_y;
+            rot_y = raw_x;
+            break;
+        default:
+            rot_x = raw_x;
+            rot_y = raw_y;
+    }
+
+    // Apply Offset (pos_x / pos_y) using the rotated coordinates
+    long adjusted_x = rot_x - cfg.pos_x;
+    long adjusted_y = rot_y - cfg.pos_y;
+
+    // Clamp to the defined area size
     if (adjusted_x < 0) adjusted_x = 0;
     if (adjusted_y < 0) adjusted_y = 0;
     if (adjusted_x > cfg.size_x) adjusted_x = cfg.size_x;
@@ -41,8 +71,7 @@ void MoveMouse(uint16_t x, uint16_t y, int click, TabletConfig cfg) {
     INPUT input = {0};
     input.type = INPUT_MOUSE;
 
-    // 3. Scaling for Windows (0-65535)
-    // Formula: (Current_Pos / Max_Range) * 65535
+    // Scaling for Windows (0-65535)
     input.mi.dx = (long)((float)adjusted_x * (65535.0f / (float)cfg.size_x));
     input.mi.dy = (long)((float)adjusted_y * (65535.0f / (float)cfg.size_y));
 
@@ -56,6 +85,8 @@ void MoveMouse(uint16_t x, uint16_t y, int click, TabletConfig cfg) {
 
     SendInput(1, &input, sizeof(INPUT));
 }
+
+
 
 int main() {
     if (hid_init() != 0) return 1;

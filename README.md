@@ -27,7 +27,7 @@ A high-performance, minimalist C-based driver for the **Wacom One (CTL-472)**. T
 1.  **Install HIDAPI**: Ensure you have the HIDAPI headers and library files.
 2.  **Compile**: Use the following command to link necessary libraries:
     ```bash
-    gcc main.c -o wacom_driver.exe -lhidapi -luser32
+    gcc main.c -o grm-tablet-driver.exe -O3 -lhidapi -luser32
     ```
 3.  **Config**: Create a `config.txt` in the same folder as the `.exe`.
 
@@ -35,10 +35,13 @@ A high-performance, minimalist C-based driver for the **Wacom One (CTL-472)**. T
 
 ## ⚙️ Configuration (`config.txt`)
 
-The driver maps your specified area to the full resolution of your monitor. Edit the values to match your preferred tablet area (raw units):
+The driver maps your specified area to the full resolution of your monitor. 
+Edit the values to match your preferred tablet area (raw units).
+ROT variable defines how your area is rotated where ROT=1 is 90 degrees rotation and so on.
 
 ```text
 POS_X=0
 POS_Y=0
 SIZE_X=6800
 SIZE_Y=5400
+ROT=0
