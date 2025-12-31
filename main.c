@@ -86,7 +86,6 @@ void MoveMouse(uint16_t raw_x, uint16_t raw_y, int click, TabletConfig cfg) {
     if (adjusted_x > cfg.size_x) adjusted_x = cfg.size_x;
     if (adjusted_y > cfg.size_y) adjusted_y = cfg.size_y;
 
-    // Map to Target Monitor
     // Calculate normalized position (0.0 to 1.0) within the tablet area
     float norm_x = (float)adjusted_x / (float)cfg.size_x;
     float norm_y = (float)adjusted_y / (float)cfg.size_y;
@@ -135,7 +134,7 @@ int main() {
     cur_dev = devs;
     
     while (cur_dev) {
-        // Wacom specific usage page for raw position data
+        // CTL-472 specific usage page for raw position data
         if (cur_dev->usage_page == 0xff0d) { 
             handle = hid_open_path(cur_dev->path);
             if (handle) {
@@ -152,11 +151,11 @@ int main() {
         return 1;
     }
 
-    // Send initialization feature report (specific to Wacom One/Intuos)
+    // Send initialization feature report (CTL-472 specific)
     unsigned char init_msg[] = { 0x02, 0x02, 0x00 };
     hid_send_feature_report(handle, init_msg, sizeof(init_msg));
 
-    unsigned char buf[64];
+    unsigned char buf[11]; //CTL-472 specific buffer size
     printf("Driver running. Press Ctrl+C to exit.\n");
 
     v_top    = GetSystemMetrics(SM_YVIRTUALSCREEN);

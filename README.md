@@ -38,6 +38,7 @@ A high-performance, minimalist C-based driver for the **Wacom One (CTL-472)**. T
 The driver maps your specified area to the full resolution of your monitor. 
 Edit the values to match your preferred tablet area (raw units).
 ROT variable defines how your area is rotated where ROT=1 is 90 degrees rotation and so on.
+SCREEN variables define your screen size and offset on screen.
 
 ```text
 POS_X=0
@@ -45,3 +46,7 @@ POS_Y=0
 SIZE_X=6800
 SIZE_Y=5400
 ROT=0
+SCREEN_X=0
+SCREEN_Y=0
+SCREEN_W=1920
+SCREEN_H=1080
