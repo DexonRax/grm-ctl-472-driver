@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <hidapi.h>
-#include <windows.h>
+#include <hidapi/hidapi.h>
+
+// X11 / XTest headers
+#include <X11/Xlib.h>
+#include <X11/extensions/XTest.h>
 
 // --- Configuration Struct ---
 typedef struct {
@@ -10,7 +13,7 @@ typedef struct {
     int size_x;         // Tablet active area width
     int size_y;         // Tablet active area height
     int rot;            // Rotation (0=0, 1=90, 2=180, 3=270)
-    
+
     // Target Monitor Settings
     int screen_x;       // Monitor Top-Left X (e.g., 0, 1920, -1920)
     int screen_y;       // Monitor Top-Left Y (usually 0)
@@ -21,25 +24,23 @@ typedef struct {
 #define MAX_TABLET_X 15200
 #define MAX_TABLET_Y 9500
 
-int v_top    = -1;
-int v_left   = -1;
-int v_width  = -1;
-int v_height = -1;
+// Global X11 display handle
+static Display *g_display = NULL;
 
 TabletConfig load_config() {
     // Default: Map full tablet to a standard 1080p primary monitor
-    TabletConfig cfg = {0, 0, MAX_TABLET_X, MAX_TABLET_Y, 0, 0, 0, 1920, 1080}; 
-    
+    TabletConfig cfg = {0, 0, MAX_TABLET_X, MAX_TABLET_Y, 0, 0, 0, 1920, 1080};
+
     FILE *f = fopen("config.txt", "r");
     if (f) {
-        if (fscanf(f, "POS_X=%d\nPOS_Y=%d\nSIZE_X=%d\nSIZE_Y=%d\nROT=%d\nSCREEN_X=%d\nSCREEN_Y=%d\nSCREEN_W=%d\nSCREEN_H=%d", 
+        if (fscanf(f, "POS_X=%d\nPOS_Y=%d\nSIZE_X=%d\nSIZE_Y=%d\nROT=%d\nSCREEN_X=%d\nSCREEN_Y=%d\nSCREEN_W=%d\nSCREEN_H=%d",
             &cfg.pos_x, &cfg.pos_y, &cfg.size_x, &cfg.size_y, &cfg.rot,
             &cfg.screen_x, &cfg.screen_y, &cfg.screen_w, &cfg.screen_h) == 9) {
-            
-            printf("Mapping to Monitor at (%d,%d) size %dx%d\n", 
+
+            printf("Mapping to Monitor at (%d,%d) size %dx%d\n",
                 cfg.screen_x, cfg.screen_y, cfg.screen_w, cfg.screen_h);
-            printf("Offset (%d,%d) Area %d x %d rotated %d degrees\n", 
-                cfg.pos_x, cfg.pos_y, cfg.size_x, cfg.size_y, cfg.rot*90);
+            printf("Offset (%d,%d) Area %d x %d rotated %d degrees\n",
+                cfg.pos_x, cfg.pos_y, cfg.size_x, cfg.size_y, cfg.rot * 90);
         } else {
             printf("Warning: Config file format incorrect. Using defaults.\n");
         }
@@ -56,23 +57,23 @@ void MoveMouse(uint16_t raw_x, uint16_t raw_y, int click, TabletConfig cfg) {
     // Rotation Logic
     switch (cfg.rot % 4) {
         case 0: // 0 deg
-            rot_x = raw_x; 
-            rot_y = raw_y; 
+            rot_x = raw_x;
+            rot_y = raw_y;
             break;
         case 1: // 90 deg CW
-            rot_x = raw_y; 
-            rot_y = MAX_TABLET_X - raw_x; 
+            rot_x = raw_y;
+            rot_y = MAX_TABLET_X - raw_x;
             break;
         case 2: // 180 deg CW
-            rot_x = MAX_TABLET_X - raw_x; 
-            rot_y = MAX_TABLET_Y - raw_y; 
+            rot_x = MAX_TABLET_X - raw_x;
+            rot_y = MAX_TABLET_Y - raw_y;
             break;
         case 3: // 270 deg CW
-            rot_x = MAX_TABLET_Y - raw_y; 
-            rot_y = raw_x; 
+            rot_x = MAX_TABLET_Y - raw_y;
+            rot_y = raw_x;
             break;
-        default: 
-            rot_x = raw_x; 
+        default:
+            rot_x = raw_x;
             rot_y = raw_y;
     }
 
@@ -80,46 +81,56 @@ void MoveMouse(uint16_t raw_x, uint16_t raw_y, int click, TabletConfig cfg) {
     long adjusted_x = rot_x - cfg.pos_x;
     long adjusted_y = rot_y - cfg.pos_y;
 
-    // Clamp values (prevent going out of defined tablet area)
+    // Clamp to defined tablet area
     if (adjusted_x < 0) adjusted_x = 0;
     if (adjusted_y < 0) adjusted_y = 0;
     if (adjusted_x > cfg.size_x) adjusted_x = cfg.size_x;
     if (adjusted_y > cfg.size_y) adjusted_y = cfg.size_y;
 
-    // Calculate normalized position (0.0 to 1.0) within the tablet area
+    // Normalized position (0.0 to 1.0) within the tablet area
     float norm_x = (float)adjusted_x / (float)cfg.size_x;
     float norm_y = (float)adjusted_y / (float)cfg.size_y;
 
-    // Calculate the exact pixel coordinate on the specific monitor
-    long target_pixel_x = cfg.screen_x + (long)(norm_x * cfg.screen_w);
-    long target_pixel_y = cfg.screen_y + (long)(norm_y * cfg.screen_h);
+    // Map to pixel coordinate on the target monitor
+    // In X11, screen coordinates are absolute across the whole virtual desktop
+    int target_x = cfg.screen_x + (int)(norm_x * cfg.screen_w);
+    int target_y = cfg.screen_y + (int)(norm_y * cfg.screen_h);
 
+    // Move the pointer to the absolute screen position
+    Window root = DefaultRootWindow(g_display);
+    XWarpPointer(g_display, None, root, 0, 0, 0, 0, target_x, target_y);
 
-    // Convert pixel coordinate to absolute range (0..65535) relative to the virtual desktop
-    long abs_x = (long)(((double)(target_pixel_x - v_left) / v_width) * 65535.0);
-    long abs_y = (long)(((double)(target_pixel_y - v_top) / v_height) * 65535.0);
-
-    // Send Input
-    INPUT input = {0};
-    input.type = INPUT_MOUSE;
-    input.mi.dx = abs_x;
-    input.mi.dy = abs_y;
-
-    // MOUSEEVENTF_VIRTUALDESK for multi-monitor setups
-    input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
-
+    // Handle left button click state changes via XTest
     static int last_click = 0;
     if (click != last_click) {
-        input.mi.dwFlags |= (click ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP);
+        // Button 1 = left mouse button; True = press, False = release
+        XTestFakeButtonEvent(g_display, 1, click ? True : False, CurrentTime);
         last_click = click;
     }
 
-    SendInput(1, &input, sizeof(INPUT));
+    XFlush(g_display);
 }
 
 int main() {
+    // Open X11 display
+    g_display = XOpenDisplay(NULL);
+    if (!g_display) {
+        printf("Failed to open X11 display. Is DISPLAY set?\n");
+        return 1;
+    }
+
+    // Verify XTest extension is available
+    int xtest_event_base, xtest_error_base, xtest_major, xtest_minor;
+    if (!XTestQueryExtension(g_display, &xtest_event_base, &xtest_error_base,
+                             &xtest_major, &xtest_minor)) {
+        printf("XTest extension not available on this display.\n");
+        XCloseDisplay(g_display);
+        return 1;
+    }
+
     if (hid_init() != 0) {
         printf("Failed to initialize HIDAPI\n");
+        XCloseDisplay(g_display);
         return 1;
     }
 
@@ -128,14 +139,14 @@ int main() {
     struct hid_device_info *devs, *cur_dev;
 
     printf("Searching for Wacom device...\n");
-    
+
     // VID (1386 / 0x056A) | PID (890 / 0x037A)
-    devs = hid_enumerate(0x056A, 0x037A); 
+    devs = hid_enumerate(0x056A, 0x037A);
     cur_dev = devs;
-    
+
     while (cur_dev) {
         // CTL-472 specific usage page for raw position data
-        if (cur_dev->usage_page == 0xff0d) { 
+        if (cur_dev->usage_page == 0xff0d) {
             handle = hid_open_path(cur_dev->path);
             if (handle) {
                 printf("Device found and opened.\n");
@@ -148,6 +159,8 @@ int main() {
 
     if (!handle) {
         printf("Device not found or could not be opened.\n");
+        printf("Try running as root or add a udev rule for the tablet.\n");
+        XCloseDisplay(g_display);
         return 1;
     }
 
@@ -155,13 +168,8 @@ int main() {
     unsigned char init_msg[] = { 0x02, 0x02, 0x00 };
     hid_send_feature_report(handle, init_msg, sizeof(init_msg));
 
-    unsigned char buf[11]; //CTL-472 specific buffer size
+    unsigned char buf[11]; // CTL-472 specific buffer size
     printf("Driver running. Press Ctrl+C to exit.\n");
-
-    v_top    = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    v_left   = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    v_width  = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    v_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
     while (1) {
         int res = hid_read(handle, buf, sizeof(buf));
@@ -173,8 +181,8 @@ int main() {
         // Parse Wacom Report
         if (res >= 8 && buf[0] == 0x02) {
             uint8_t status = buf[1];
-            int proximity = (status & 0x80); 
-            
+            int proximity = (status & 0x80);
+
             if (proximity) {
                 uint16_t x = buf[2] | (buf[3] << 8);
                 uint16_t y = buf[4] | (buf[5] << 8);
@@ -190,5 +198,6 @@ int main() {
 
     hid_close(handle);
     hid_exit();
+    XCloseDisplay(g_display);
     return 0;
 }

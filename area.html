@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Functional Scaling Toolkit</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --card-bg: #ffffff;
+            --primary-color: #4a90e2;
+            --secondary-color: #2ca58d;
+            --text-color: #333333;
+            --border-color: #dddddd;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 2rem;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            box-sizing: border-box;
+            flex-wrap: wrap;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 400px;
+            flex: 1 1 350px;
+        }
+
+        h2 {
+            margin-top: 0;
+            text-align: center;
+            color: #222;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 0.5rem;
+        }
+
+        .input-group {
+            margin-bottom: 1.2rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.4rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .tool-2 input:focus {
+            border-color: var(--secondary-color);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.8rem;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 0.5rem;
+        }
+
+        .btn-tool1 { background-color: var(--primary-color); }
+        .btn-tool1:hover { background-color: #357abd; }
+
+        .btn-tool2 { background-color: var(--secondary-color); }
+        .btn-tool2:hover { background-color: #217e6a; }
+
+        .results {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 2px dashed var(--border-color);
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.6rem;
+            font-size: 1rem;
+        }
+
+        .result-val {
+            font-weight: bold;
+        }
+        
+        .color-1 { color: var(--primary-color); }
+        .color-2 { color: var(--secondary-color); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Resolution Scaler</h2>
+    
+    <div class="input-group">
+        <label for="screenRes">Screen Resolution (SC)</label>
+        <input type="number" id="screenRes" value="1920">
+    </div>
+
+    <div class="input-group">
+        <label for="desiredRes">Desired Resolution (DR)</label>
+        <input type="number" id="desiredRes" value="1080">
+    </div>
+
+    <div class="input-group">
+        <label for="num1">First Number to Scale</label>
+        <input type="number" id="num1" value="50">
+    </div>
+
+    <div class="input-group">
+        <label for="num2">Second Number to Scale</label>
+        <input type="number" id="num2" value="100">
+    </div>
+
+    <button class="btn-tool1" onclick="calculateScale()">Calculate Scale</button>
+
+    <div class="results">
+        <div class="result-item">
+            <span>Calculated Ratio (SC/DR):</span>
+            <span id="outputRatio" class="result-val color-1">-</span>
+        </div>
+        <div class="result-item">
+            <span>New First Number:</span>
+            <span id="outputNum1" class="result-val color-1">-</span>
+        </div>
+        <div class="result-item">
+            <span>New Second Number:</span>
+            <span id="outputNum2" class="result-val color-1">-</span>
+        </div>
+    </div>
+</div>
+
+<div class="container tool-2">
+    <h2>Ratio Resizer %</h2>
+    
+    <div class="input-group">
+        <label for="ratioNum1">Base Number 1</label>
+        <input type="number" id="ratioNum1" value="6800" oninput="calculatePercentageScale()">
+    </div>
+
+    <div class="input-group">
+        <label for="ratioNum2">Base Number 2</label>
+        <input type="number" id="ratioNum2" value="5400" oninput="calculatePercentageScale()">
+    </div>
+
+    <div class="input-group">
+        <label for="percentage">Scale Percentage (+ or - %)</label>
+        <input type="number" id="percentage" value="25" placeholder="e.g., 25 or -10" oninput="calculatePercentageScale()">
+    </div>
+
+    <button class="btn-tool2" onclick="calculatePercentageScale()">Calculate Percent</button>
+
+    <div class="results">
+        <div class="result-item">
+            <span>Base Ratio (Num1 / Num2):</span>
+            <span id="outputBaseRatio" class="result-val color-2">-</span>
+        </div>
+        <div class="result-item">
+            <span>Scaled Number 1:</span>
+            <span id="outputScaled1" class="result-val color-2">-</span>
+        </div>
+        <div class="result-item">
+            <span>Scaled Number 2:</span>
+            <span id="outputScaled2" class="result-val color-2">-</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Logic for Tool 1 (Resolution Scaler)
+    function calculateScale() {
+        const screenRes = parseFloat(document.getElementById('screenRes').value);
+        const desiredRes = parseFloat(document.getElementById('desiredRes').value);
+        const num1 = parseFloat(document.getElementById('num1').value);
+        const num2 = parseFloat(document.getElementById('num2').value);
+
+        // Validation: If fields are empty or dividing by zero, reset display
+        if (isNaN(screenRes) || isNaN(desiredRes) || isNaN(num1) || isNaN(num2) || desiredRes === 0) {
+            document.getElementById('outputRatio').innerText = "-";
+            document.getElementById('outputNum1').innerText = "-";
+            document.getElementById('outputNum2').innerText = "-";
+            return;
+        }
+
+        // Fresh calculation based strictly on live inputs
+        const ratio = screenRes / desiredRes;
+        
+        document.getElementById('outputRatio').innerText = ratio.toFixed(4);
+        document.getElementById('outputNum1').innerText = (num1 * ratio).toFixed(2);
+        document.getElementById('outputNum2').innerText = (num2 * ratio).toFixed(2);
+    }
+
+    // Logic for Tool 2 (Percentage Ratio Resizer)
+    function calculatePercentageScale() {
+        const base1 = parseFloat(document.getElementById('ratioNum1').value);
+        const base2 = parseFloat(document.getElementById('ratioNum2').value);
+        const percent = parseFloat(document.getElementById('percentage').value);
+
+        if (isNaN(base1) || isNaN(base2) || base2 === 0) {
+            document.getElementById('outputBaseRatio').innerText = "-";
+            document.getElementById('outputScaled1').innerText = "-";
+            document.getElementById('outputScaled2').innerText = "-";
+            return;
+        }
+
+        const baseRatio = base1 / base2;
+        document.getElementById('outputBaseRatio').innerText = baseRatio.toFixed(4);
+
+        const percentAdjustment = isNaN(percent) ? 0 : percent;
+        const multiplier = 1 + (percentAdjustment / 100);
+
+        document.getElementById('outputScaled1').innerText = (base1 * multiplier).toFixed(2);
+        document.getElementById('outputScaled2').innerText = (base2 * multiplier).toFixed(2);
+    }
+
+    // Attach real-time listeners to Tool 1 inputs so it updates as you type
+    document.getElementById('screenRes').addEventListener('input', calculateScale);
+    document.getElementById('desiredRes').addEventListener('input', calculateScale);
+    document.getElementById('num1').addEventListener('input', calculateScale);
+    document.getElementById('num2').addEventListener('input', calculateScale);
+
+    // Run calculations once immediately on page load to display correct starting values
+    window.addEventListener('DOMContentLoaded', () => {
+        calculateScale();
+        calculatePercentageScale();
+    });
+</script>
+
+</body>
+</html>
