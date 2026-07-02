@@ -1,5 +1,12 @@
+// Compile: gcc wacom_driver.c -o wacom_driver -lhidapi-hidraw -lX11 -lXtst
+//
+// Run once after each rebuild to allow real-time scheduling without sudo:
+//   sudo setcap cap_sys_nice+ep ./wacom_driver
+
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
+#include <sched.h>
 #include <hidapi/hidapi.h>
 
 // X11 / XTest headers
@@ -24,8 +31,12 @@ typedef struct {
 #define MAX_TABLET_X 15200
 #define MAX_TABLET_Y 9500
 
-// Global X11 display handle
+// Global X11 display handle + cached root window. The root window never
+// changes after XOpenDisplay, so we look it up once instead of re-deriving
+// it on every single HID report (DefaultRootWindow is a cheap macro either
+// way -- this is about clarity, not a real perf win).
 static Display *g_display = NULL;
+static Window   g_root = 0;
 
 TabletConfig load_config() {
     // Default: Map full tablet to a standard 1080p primary monitor
@@ -96,9 +107,12 @@ void MoveMouse(uint16_t raw_x, uint16_t raw_y, int click, TabletConfig cfg) {
     int target_x = cfg.screen_x + (int)(norm_x * cfg.screen_w);
     int target_y = cfg.screen_y + (int)(norm_y * cfg.screen_h);
 
-    // Move the pointer to the absolute screen position
-    Window root = DefaultRootWindow(g_display);
-    XWarpPointer(g_display, None, root, 0, 0, 0, 0, target_x, target_y);
+    // Move the pointer to the absolute screen position. XWarpPointer queues
+    // a request in Xlib's client-side buffer; XFlush below is what actually
+    // writes it to the socket. The click event below shares that same
+    // flush, so there's no extra batching to add here -- it's already one
+    // syscall for both.
+    XWarpPointer(g_display, None, g_root, 0, 0, 0, 0, target_x, target_y);
 
     // Handle left button click state changes via XTest
     static int last_click = 0;
@@ -111,13 +125,44 @@ void MoveMouse(uint16_t raw_x, uint16_t raw_y, int click, TabletConfig cfg) {
     XFlush(g_display);
 }
 
+// Ask the kernel for real-time scheduling so this process gets woken up
+// immediately when a USB report arrives, instead of waiting its turn behind
+// other SCHED_OTHER tasks (browser tabs, a compile, a game on another core).
+//
+// This is safe from a "hogging the CPU" standpoint because it changes WHEN
+// we get scheduled, not HOW LONG we run for -- the process still spends
+// effectively 100% of its life blocked inside hid_read(), asleep, using 0%
+// CPU, exactly like before. SCHED_FIFO only matters in the brief moment
+// between "USB data arrived" and "our thread actually runs," which is where
+// jitter under system load actually comes from. If this loop ever grows a
+// busy-wait instead of a blocking call, remove this -- FIFO at that point
+// would start starving the rest of the desktop's input handling too.
+//
+// Needs CAP_SYS_NICE. Run once per rebuild:
+//   sudo setcap cap_sys_nice+ep ./wacom_driver
+static void try_enable_realtime(void) {
+    struct sched_param sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.sched_priority = 20; // modest -- only needs to beat normal desktop tasks
+
+    if (sched_setscheduler(0, SCHED_FIFO, &sp) == 0) {
+        printf("Realtime scheduling enabled (SCHED_FIFO, priority %d)\n", sp.sched_priority);
+    } else {
+        perror("sched_setscheduler failed, continuing at normal priority");
+        printf("Tip: sudo setcap cap_sys_nice+ep ./wacom_driver (one-time, per rebuild)\n");
+    }
+}
+
 int main() {
+    try_enable_realtime();
+
     // Open X11 display
     g_display = XOpenDisplay(NULL);
     if (!g_display) {
         printf("Failed to open X11 display. Is DISPLAY set?\n");
         return 1;
     }
+    g_root = DefaultRootWindow(g_display);
 
     // Verify XTest extension is available
     int xtest_event_base, xtest_error_base, xtest_major, xtest_minor;
@@ -172,6 +217,11 @@ int main() {
     printf("Driver running. Press Ctrl+C to exit.\n");
 
     while (1) {
+        // hid_read() blocks here until the kernel has a new report ready --
+        // this is a sleep, not a poll, so the process sits at ~0% CPU while
+        // idle. Don't swap this for a non-blocking read plus a usleep()
+        // loop; that trades a free, instant wakeup for actual periodic
+        // polling, which is strictly worse for both latency and CPU usage.
         int res = hid_read(handle, buf, sizeof(buf));
         if (res < 0) {
             printf("Error reading device.\n");
